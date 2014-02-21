@@ -10,6 +10,7 @@
 #include <unistd.h>
 #include <sys/wait.h>
 #include <stdlib.h>
+#include <stdio.h>
 
 /* FIXME: You may need to add #include directives, macro definitions,
    static function definitions, etc.  */
@@ -30,7 +31,7 @@ execute_command (command_t cmd, int time_travel)
 	int status;
 	pid_t child;
 	int fd[2];
-	switch (cmd->status)
+	switch (cmd->type)
 	{
 		case SIMPLE_COMMAND:
 			child = fork();
@@ -47,9 +48,9 @@ execute_command (command_t cmd, int time_travel)
 				}
 				if (cmd->output)
 				{
-					if ((fd_out = open(cmd->output, O_WRONLY | O_CREAT | O_TRUNC, 0666)) == -1)
+					if ((fd_out = open(cmd->output, O_WRONLY | O_CREAT, 0666)) == -1)
 						error(1, 0, "cannot open output file!");
-					if (dup2(fd_out, 0) == -1)
+					if (dup2(fd_out, 1) == -1)
 						error(1, 0, "cannot do output redirect!");
 				}
 				execvp(cmd->u.word[0], cmd->u.word);
@@ -62,9 +63,11 @@ execute_command (command_t cmd, int time_travel)
 			}
 			else
 				error(1, 0, "cannot create child process!");
+			break;
 		case AND_COMMAND:
 			//run left child command first, on its success, run right child command
 			execute_command(cmd->u.command[0], time_travel);
+			//printf("and status: %d\n", cmd->u.command[0]->status);
 			if (cmd->u.command[0]->status == 0)
 			{
 				//run second command cmd2
@@ -73,6 +76,20 @@ execute_command (command_t cmd, int time_travel)
 			}
 			else
 				cmd->status = cmd->u.command[0]->status;
+			break;
+		case OR_COMMAND:
+			//run left child command first, on its failure, run right child command
+			execute_command(cmd->u.command[0], time_travel);
+			//printf("or status: %d\n", cmd->u.command[0]->status);
+			if (cmd->u.command[0]->status != 0)
+			{
+				//run second command cmd2
+				execute_command(cmd->u.command[1], time_travel);
+				cmd->status = cmd->u.command[1]->status;
+			}
+			else
+				cmd->status = cmd->u.command[0]->status;
+			break;
 		case PIPE_COMMAND:
 			//create 2 processes for each, redirect output of cmd1 to input of cmd2
 			if (pipe(fd) == -1)
@@ -81,10 +98,14 @@ execute_command (command_t cmd, int time_travel)
 			if (!child)
 			{
 				//child writes to pipe
-				close(fd[0]);
+			//	printf("before close");
+			//	close(fd[0]);
+			//	printf("before dup2");
 				if (dup2(fd[1], STDOUT_FILENO) == -1)
 					error(1, 0, "cannot redirect output");
+			//	printf("executing command %s", cmd->u.command[0]->u.word[0]);
 				execute_command(cmd->u.command[0], time_travel);
+			//	printf("finishing command %s", cmd->u.command[0]->u.word[0]);
 				close(fd[1]);
 				exit(cmd->u.command[0]->status);
 			}
@@ -98,8 +119,20 @@ execute_command (command_t cmd, int time_travel)
 					error(1, 0, "cannot redirect input");
 				execute_command(cmd->u.command[1], time_travel);
 				close(fd[0]);
+				cmd->status = cmd->u.command[1]->status;
+				//printf("status: %d\n", cmd->status);
+				//exit(cmd->status);
 			}
 			else
 				error(1, 0, "could not create child process!");
+			break;
+		case SUBSHELL_COMMAND:
+			execute_command(cmd->u.subshell_command, time_travel);
+			break;
+		case SEQUENCE_COMMAND:
+			execute_command(cmd->u.command[0], time_travel);
+			execute_command(cmd->u.command[1], time_travel);
+		default:
+			break;
 	}
 }

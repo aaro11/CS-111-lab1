@@ -13,6 +13,19 @@ command_stream_t make_command_stream (int (*getbyte) (void *), void *arg);
    an error, report the error and exit instead of returning.  */
 command_t read_command_stream (command_stream_t stream);
 
+/* Venudhar's function, counts the number of elements of the stream
+ * and returns the stream as an array instead of linked list
+ * so that main.c can make and evaluate the dep. graph	*/
+command_stream_t* streamArrayFromList(command_stream_t strm, int* lengthOut);
+
+/* Venudhar's other functions, get all the inputs and outputs
+ * from a command_stream_t recursively and also actually get the cmd	*/
+char** getInputs_pub(command_stream_t strm);
+
+char** getOutputs_pub(command_stream_t strm);
+
+command_t getCmd(command_stream_t strm);
+
 /* Print a command to stdout, for debugging.  */
 void print_command (command_t);
 
